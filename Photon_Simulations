@@ -1,0 +1,87 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from qutip import *
+from tqdm import tqdm
+from matplotlib.ticker import FormatStrFormatter
+# Constants
+kappa = 1
+gamma = 1 * kappa
+U = 6 * kappa
+delta = 15 * kappa    
+Omega = 0.3 * kappa
+# Hilbert space dimensions
+N_1 = 4
+N_2 = 4
+# Operators
+a1 = tensor(destroy(N_1), qeye(N_2))
+a2 = tensor(qeye(N_1), destroy(N_2))
+# Arrays for scanning detunings
+Delta_1_ARRAY = np.linspace(-30, 30, 81)
+Delta_2_ARRAY = np.linspace(-30, 30, 81)
+# Collapse operators
+c_ops = [np.sqrt(kappa) * a1, np.sqrt(gamma) * a2]
+# Function to compute log10(g2) for a specific mode
+def compute_g2_values(mode=1):
+    values = np.zeros((len(Delta_1_ARRAY), len(Delta_2_ARRAY)))
+
+    for i, Delta_1 in enumerate(tqdm(Delta_1_ARRAY)):
+        for j, Delta_2 in enumerate(Delta_2_ARRAY):
+            H = (Delta_1 * a1.dag() * a1 + Delta_2 * a2.dag() * a2 +
+                 U * (a1.dag()**2 * a1**2 + a2.dag()**2 * a2**2) +
+                 0.5 * delta * (a1.dag() * a2 + a1 * a2.dag()) +
+                 1j * Omega * (a1.dag() - a1))
+            
+            rhoss = steadystate(H, c_ops)
+            if mode == 1:
+                n = expect(a1.dag() * a1, rhoss)
+                n2 = expect(a1.dag() * a1.dag() * a1 * a1, rhoss)
+            else:
+                n = expect(a2.dag() * a2, rhoss)
+                n2 = expect(a2.dag() * a2.dag() * a2 * a2, rhoss)
+            g2 = n2 / (n**2) if n > 0 else 0
+            values[i, j] = np.log10(g2) if g2 > 0 else -np.inf
+
+    return values
+# Compute for both modes
+g2_a1 = compute_g2_values(mode=1)
+g2_a2 = compute_g2_values(mode=2)
+# Plotting
+fig, axs = plt.subplots(1, 2, figsize=(16, 7), sharex=True, sharey=True)
+
+for idx, (ax, data) in enumerate(zip(axs, [g2_a1, g2_a2])):
+    contour = ax.contourf(Delta_1_ARRAY, Delta_2_ARRAY, data.T, levels=200, cmap='viridis')
+    # Add individual colorbar for each subplot
+    cbar = fig.colorbar(contour, ax=ax)
+    cbar.ax.tick_params(labelsize=25)
+    # Analytic condition 1: yellow dashed
+    Delta_1_fine = np.linspace(-35, -1.5, 400)
+    Delta_1_fine_r = np.linspace(1.5, 35, 400)
+    ax.plot(Delta_1_fine, (delta/2)**2 / Delta_1_fine, 'y--', linewidth=2)
+    ax.plot(Delta_1_fine_r, (delta/2)**2 / Delta_1_fine_r, 'y--', linewidth=2)
+    # Analytic condition 2
+    if idx == 0:
+        Delta_2_left = np.linspace(-35, -6, 81)
+        Delta_2_right = np.linspace(0, 35, 81)
+        Delta_1_cond_left = ((-(delta/2)**2)*U / (Delta_2_left*(Delta_2_left + U)))-Delta_2_left
+        Delta_1_cond_right = ((-(delta/2)**2)*U / (Delta_2_right*(Delta_2_right + U)))-Delta_2_right
+        ax.plot(Delta_1_cond_left, Delta_2_left, 'r--', linewidth=2)
+        ax.plot(Delta_1_cond_right, Delta_2_right, 'r--', linewidth=2)
+        ax.text(0.65, 0.95, r'$Port~3$', transform=ax.transAxes, fontsize=40, va='top', ha='left', color='white')
+    else:
+        ax.plot(Delta_1_ARRAY, -Delta_1_ARRAY - U, 'r--', linewidth=2)
+        ax.text(0.65, 0.95, r'$Port~4$', transform=ax.transAxes,
+            fontsize=40, va='top', ha='left', color='white')
+    # Add subplot label (a), (b)
+    ax.text(0.01, 0.985, f"({chr(97 + idx)})", transform=ax.transAxes,
+            fontsize=40, va='top', ha='left')
+    # Set axis labels
+    ax.set_xlabel(r'$\Delta_1/\kappa}$', fontsize=40)
+    if idx == 0:
+        ax.set_ylabel(r'$\Delta_2/\kappa}$', fontsize=40)
+    ax.tick_params(labelsize=26)
+    ax.set_xlim(-30, 30)
+    ax.set_ylim(-30, 30)
+    ax.set_xticks([-30, -20, -10, 0, 10, 20, 30])
+plt.tight_layout()
+plt.savefig("FFFFFG.png", format="png", dpi=600)
+plt.show()
